@@ -1,7 +1,6 @@
 package pro.beam.api.resource.chat;
 
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import org.java_websocket.client.WebSocketClient;
@@ -17,28 +16,24 @@ import pro.beam.api.resource.chat.replies.ReplyHandler;
 
 import java.lang.reflect.ParameterizedType;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 
-@SuppressWarnings("unchecked")
 public class BeamChatConnectable extends WebSocketClient {
     protected final BeamChatBridge bridge;
-
-    protected final Map<Integer, ReplyPair> replyHandlers;
-    protected final Multimap<Class<? extends AbstractChatEvent>, EventHandler> eventHandlers;
+    protected final ChatHandlerDispatch dispatch;
 
     public BeamChatConnectable(BeamChatBridge bridge, URI endpoint) {
         super(endpoint, new CookieDraft_17(bridge.beam.http));
 
         this.bridge = bridge;
-
-        this.replyHandlers = new ConcurrentHashMap<>(new HashMap<Integer, ReplyPair>());
-        this.eventHandlers = HashMultimap.create();
+        this.dispatch = new ChatHandlerDispatch(bridge.beam,
+                                                new ConcurrentHashMap<>(new HashMap<Integer, ReplyPair>()),
+                                                HashMultimap.<Class<? extends AbstractChatEvent>, EventHandler>create());
     }
 
     public <T extends AbstractChatEvent> boolean on(Class<T> eventType, EventHandler<T> handler) {
-        return this.eventHandlers.put(eventType, handler);
+        return this.dispatch.eventHandlers.put(eventType, handler);
     }
 
     public void send(AbstractChatMethod method) {
@@ -47,7 +42,7 @@ public class BeamChatConnectable extends WebSocketClient {
 
     public <T extends AbstractChatReply> void send(final AbstractChatMethod method, ReplyHandler<T> handler) {
         if (handler != null) {
-            this.replyHandlers.put(method.id, ReplyPair.from(handler));
+            this.dispatch.replyHandlers.put(method.id, ReplyPair.from(handler));
         }
 
         this.bridge.beam.executor.submit(new Callable<Object>() {
@@ -66,14 +61,6 @@ public class BeamChatConnectable extends WebSocketClient {
         this.bridge.beam.http.delete(path, null);
     }
 
-    private <T extends AbstractChatEvent> void dispatchEvent(T event) {
-        Class<? extends AbstractChatEvent> eventType = event.getClass();
-
-        for (EventHandler handler : this.eventHandlers.get(eventType)) {
-            handler.onEvent(event);
-        }
-    }
-
     @Override
     public void onOpen(ServerHandshake serverHandshake) {
     }
@@ -86,28 +73,17 @@ public class BeamChatConnectable extends WebSocketClient {
             //  since we cannot yet parse as a generic class.
             JsonObject e = this.bridge.beam.gson.fromJson(s, JsonObject.class);
             if (e.has("id")) {
-                int id = e.get("id").getAsInt();
-
-                // Try and remove a reply-pair, execute the #onSuccess method if we find
-                // a matching reply-pair.
-                if ((replyPair = this.replyHandlers.remove(id)) != null) {
-                    Class<? extends AbstractChatDatagram> type = replyPair.type;
-
-                    // Now that we have the type, we can appropriately parse out the value
-                    // And call the #onSuccess method with the value.
-                    AbstractChatDatagram datagram = this.bridge.beam.gson.fromJson(s, type);
-                    replyPair.handler.onSuccess(type.cast(datagram));
-                }
+                this.dispatch.accept(e.get("id").getAsInt(), e);
             } else if (e.has("event")) {
                 // Handles cases of Beam Widget (ex. GiveawayBot) sending ChatMessage events
-                if(e.getAsJsonObject("data").has("user_id") && e.getAsJsonObject("data").get("user_id").getAsInt() == -1) {
-                        Class<? extends AbstractChatEvent> type = AbstractChatEvent.EventType.fromSerializedName("WidgetMessage").getCorrespondingClass();
-                        this.dispatchEvent(this.bridge.beam.gson.fromJson(e, type));
+                if (e.getAsJsonObject("data").has("user_id") && e.getAsJsonObject("data").get("user_id").getAsInt() == -1) {
+                    Class<? extends AbstractChatEvent> type = AbstractChatEvent.EventType.fromSerializedName("WidgetMessage").getCorrespondingClass();
+                    this.dispatch.accept(this.bridge.beam.gson.fromJson(e, type));
                 } else {
                    // Use the default ChatMessage event handling
                    String eventName = e.get("event").getAsString();
                    Class<? extends AbstractChatEvent> type = AbstractChatEvent.EventType.fromSerializedName(eventName).getCorrespondingClass();
-                   this.dispatchEvent(this.bridge.beam.gson.fromJson(e, type));
+                   this.dispatch.accept(this.bridge.beam.gson.fromJson(e, type));
                 }
             }
         } catch (JsonSyntaxException e) {
