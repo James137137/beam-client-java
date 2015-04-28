@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import pro.beam.api.BeamAPI;
 import pro.beam.api.resource.chat.events.EventHandler;
 import pro.beam.api.util.QueueWorker;
+import pro.beam.api.util.SingleDispatchQueueWorker;
 
 import java.util.Map;
 import java.util.Queue;
@@ -27,12 +28,10 @@ public class ChatHandlerDispatch {
 
         this.replyHandlers = replyHandlers;
         this.eventHandlers = eventHandlers;
-
-        this.startWorkers();
     }
 
-    public <T extends AbstractChatReply> void accept(int id, JsonObject o) {
-        BeamChatConnectable.ReplyPair pair = this.replyHandlers.get(id);
+    public void accept(int id, JsonObject o) {
+        BeamChatConnectable.ReplyPair pair = this.replyHandlers.remove(id);
         if (pair != null) {
             Class<? extends AbstractChatDatagram> type = pair.type;
             AbstractChatDatagram reply = this.beam.gson.fromJson(o.toString(), type);
@@ -45,25 +44,26 @@ public class ChatHandlerDispatch {
         this.eventQueue.offer(event);
     }
 
-    private void startWorkers() {
-        new Thread(new QueueWorker<>(this.replyQueue, new Function<AbstractChatReply, Boolean>() {
-            @Override public Boolean apply(AbstractChatReply reply) {
-                BeamChatConnectable.ReplyPair replyPair = replyHandlers.remove(reply.id);
-                if (replyPair != null) {
-                    replyPair.handler.onSuccess(reply);
-                }
+    public void attachReplyHandler(final int id, final BeamChatConnectable.ReplyPair pair) {
+        this.replyHandlers.put(id, pair);
 
-                return true;
+        new Thread(new SingleDispatchQueueWorker<>(this.replyQueue, new Function<AbstractChatReply, Boolean>() {
+            @Override public Boolean apply(AbstractChatReply reply) {
+                if (reply.id == id) {
+                    pair.handler.onSuccess(reply);
+                    return true;
+                } else return false;
             }
         })).run();
+    }
 
+    public <T extends AbstractChatEvent> void attachEventHandler(final Class<T> eventType, final EventHandler<T> handler) {
         new Thread(new QueueWorker<>(this.eventQueue, new Function<AbstractChatEvent, Boolean>() {
             @Override public Boolean apply(AbstractChatEvent event) {
-                for (EventHandler handler : eventHandlers.get(event.getClass())) {
-                    handler.onEvent(event);
-                }
-
-                return true;
+                if (event.getClass() == eventType) {
+                    handler.onEvent((T) event);
+                    return true;
+                } else return false;
             }
         })).run();
     }

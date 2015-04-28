@@ -33,7 +33,8 @@ public class BeamChatConnectable extends WebSocketClient {
     }
 
     public <T extends AbstractChatEvent> boolean on(Class<T> eventType, EventHandler<T> handler) {
-        return this.dispatch.eventHandlers.put(eventType, handler);
+        this.dispatch.attachEventHandler(eventType, handler);
+        return true;
     }
 
     public void send(AbstractChatMethod method) {
@@ -42,7 +43,7 @@ public class BeamChatConnectable extends WebSocketClient {
 
     public <T extends AbstractChatReply> void send(final AbstractChatMethod method, ReplyHandler<T> handler) {
         if (handler != null) {
-            this.dispatch.replyHandlers.put(method.id, ReplyPair.from(handler));
+            this.dispatch.attachReplyHandler(method.id, ReplyPair.from(handler));
         }
 
         this.bridge.beam.executor.submit(new Callable<Object>() {
