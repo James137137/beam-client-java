@@ -54,17 +54,22 @@ public class ChatHandlerDispatch {
                     return true;
                 } else return false;
             }
-        })).run();
+        })).start();
     }
 
     public <T extends AbstractChatEvent> void attachEventHandler(final Class<T> eventType, final EventHandler<T> handler) {
         new Thread(new QueueWorker<>(this.eventQueue, new Function<AbstractChatEvent, Boolean>() {
             @Override public Boolean apply(AbstractChatEvent event) {
-                if (event.getClass() == eventType) {
-                    handler.onEvent((T) event);
-                    return true;
-                } else return false;
+                try {
+                    if (event.getClass() == eventType) {
+                        handler.onEvent((T) event);
+                        return true;
+                    } else return false;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return false;
+                }
             }
-        })).run();
+        })).start();
     }
 }

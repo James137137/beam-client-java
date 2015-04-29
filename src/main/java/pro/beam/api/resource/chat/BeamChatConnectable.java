@@ -71,7 +71,7 @@ public class BeamChatConnectable extends WebSocketClient {
         ReplyPair replyPair = null;
         try {
             // Parse out the generic JsonObject so we can pull out the ID element from it,
-            //  since we cannot yet parse as a generic class.
+            // since we cannot yet parse as a generic class.
             JsonObject e = this.bridge.beam.gson.fromJson(s, JsonObject.class);
             if (e.has("id")) {
                 this.dispatch.accept(e.get("id").getAsInt(), e);
@@ -81,10 +81,10 @@ public class BeamChatConnectable extends WebSocketClient {
                     Class<? extends AbstractChatEvent> type = AbstractChatEvent.EventType.fromSerializedName("WidgetMessage").getCorrespondingClass();
                     this.dispatch.accept(this.bridge.beam.gson.fromJson(e, type));
                 } else {
-                   // Use the default ChatMessage event handling
-                   String eventName = e.get("event").getAsString();
-                   Class<? extends AbstractChatEvent> type = AbstractChatEvent.EventType.fromSerializedName(eventName).getCorrespondingClass();
-                   this.dispatch.accept(this.bridge.beam.gson.fromJson(e, type));
+                    // Use the default ChatMessage event handling
+                    String eventName = e.get("event").getAsString();
+                    Class<? extends AbstractChatEvent> type = AbstractChatEvent.EventType.fromSerializedName(eventName).getCorrespondingClass();
+                    this.dispatch.accept(this.bridge.beam.gson.fromJson(e, type));
                 }
             }
         } catch (JsonSyntaxException e) {
