@@ -15,7 +15,7 @@ public abstract class AbstractQueueWorker<T> implements Runnable {
     @Override public void run() {
         T next;
         while (this.shouldWork()) {
-            if ((next = this.queue.element()) != null) {
+            if ((next = this.queue.peek()) != null) {
                 boolean shouldRemove = this.applicant.apply(next);
                 if (shouldRemove) {
                     this.notifyWorkOn(next);
